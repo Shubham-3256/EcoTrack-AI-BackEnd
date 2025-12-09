@@ -41,6 +41,24 @@ JWT_EXP_SECONDS = 60 * 60 * 24 * 7  # token valid 7 days
 
 # initialize SQLAlchemy with the app
 db.init_app(app)
+# ------------------------------------------------------------
+# DB auto-init for deployment (Render, etc.)
+# ------------------------------------------------------------
+with app.app_context():
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        if "user" not in tables or "energy_usage" not in tables:
+            logger.info("Initializing database tables on startup...")
+            db.create_all()
+            tables = inspector.get_table_names()
+            logger.info("DB tables after init: %s", tables)
+        else:
+            logger.info("DB already initialized with tables: %s", tables)
+    except Exception as e:
+        logger.exception("DB auto-init failed: %s", e)
 
 # ------------------------------------------------------------
 # JWT helpers

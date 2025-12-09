@@ -1,0 +1,17 @@
+# Python
+venv
+.env
+.env.*
+__pycache__
+*.pyc
+
+# Flask/SQLAlchemy
+instance
+*.db
+
+# ML artifacts
+ML/model.pkl
+
+# OS / editor
+.DS_Store
+Thumbs.db

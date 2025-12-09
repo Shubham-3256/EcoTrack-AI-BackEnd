@@ -24,3 +24,5 @@ python-dotenv==1.0.0
 
 # ----- Misc -----
 # Add others here if needed (requests, etc.)
+# For production server
+gunicorn>=21.2.0

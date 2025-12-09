@@ -41,24 +41,6 @@ JWT_EXP_SECONDS = 60 * 60 * 24 * 7  # token valid 7 days
 
 # initialize SQLAlchemy with the app
 db.init_app(app)
-# ------------------------------------------------------------
-# DB auto-init for deployment (Render, etc.)
-# ------------------------------------------------------------
-with app.app_context():
-    try:
-        from sqlalchemy import inspect
-
-        inspector = inspect(db.engine)
-        tables = inspector.get_table_names()
-        if "user" not in tables or "energy_usage" not in tables:
-            logger.info("Initializing database tables on startup...")
-            db.create_all()
-            tables = inspector.get_table_names()
-            logger.info("DB tables after init: %s", tables)
-        else:
-            logger.info("DB already initialized with tables: %s", tables)
-    except Exception as e:
-        logger.exception("DB auto-init failed: %s", e)
 
 # ------------------------------------------------------------
 # JWT helpers
@@ -185,6 +167,26 @@ class EnergyUsage(db.Model):
         }
 
 # ------------------------------------------------------------
+# DB auto-init for deployment (Render, etc.)
+# ------------------------------------------------------------
+with app.app_context():
+    try:
+        from sqlalchemy import inspect
+
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        if "user" not in tables or "energy_usage" not in tables:
+            logger.info("Initializing database tables on startup...")
+            db.create_all()
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            logger.info("DB tables after init: %s", tables)
+        else:
+            logger.info("DB already initialized with tables: %s", tables)
+    except Exception as e:
+        logger.exception("DB auto-init failed: %s", e)
+
+# ------------------------------------------------------------
 # Predictor: lazy-load and resilient
 # ------------------------------------------------------------
 _predictor_instance = None
@@ -241,7 +243,6 @@ def auto_train_model():
     except Exception as e:
         logger.exception("Auto-training failed: %s", e)
 
-
 # ------------------------------------------------------------
 # Routes
 # ------------------------------------------------------------
@@ -284,13 +285,19 @@ def save_energy_usage():
         return jsonify({"error": "kwh must be numeric"}), 400
 
     try:
-        record = EnergyUsage(user_id=g.current_user.id, company=company, date=date_obj, kwh=kwh_val, notes=data.get("notes"))
+        record = EnergyUsage(
+            user_id=g.current_user.id,
+            company=company,
+            date=date_obj,
+            kwh=kwh_val,
+            notes=data.get("notes"),
+        )
         db.session.add(record)
         db.session.commit()
     except Exception as e:
         logger.exception("Failed to save energy usage")
         db.session.rollback()
-        return jsonify({"error": "failed to save record", "details": str(e)}), 500
+        return jsonify({"error": "failed_to_save_record", "details": str(e)}), 500
 
     return jsonify({"saved": record.to_dict()}), 201
 
@@ -298,21 +305,25 @@ def save_energy_usage():
 def calculate_emission():
     data = request.get_json() or {}
     if "kwh" not in data:
-        return jsonify({"error": "kwh required"}), 400
+        return jsonify({"error": "kwh_required"}), 400
 
     try:
         kwh_val = float(data.get("kwh"))
     except Exception:
-        return jsonify({"error": "kwh must be numeric"}), 400
+        return jsonify({"error": "kwh_must_be_numeric"}), 400
 
     factor = data.get("emission_factor")
     try:
         co2_kg = calculate_emission_from_kwh(kwh_val, emission_factor=factor)
     except Exception as e:
         logger.exception("Emission calc failed")
-        return jsonify({"error": "emission calculation failed", "details": str(e)}), 500
+        return jsonify({"error": "emission_calculation_failed", "details": str(e)}), 500
 
-    return jsonify({"kwh": kwh_val, "emission_factor": float(co2_kg / kwh_val) if kwh_val != 0 else None, "co2_kg": co2_kg}), 200
+    return jsonify({
+        "kwh": kwh_val,
+        "emission_factor": float(co2_kg / kwh_val) if kwh_val != 0 else None,
+        "co2_kg": co2_kg,
+    }), 200
 
 @app.route("/predict-trend", methods=["POST"])
 @jwt_required
@@ -341,8 +352,8 @@ def predict_trend():
     predictor = get_predictor()
     if predictor is None:
         preds = []
-        from datetime import timedelta, date
-        today = date.today()
+        from datetime import timedelta, date as _date
+        today = _date.today()
         if history_df is not None and not history_df.empty:
             history_df = history_df.sort_values("date")
             if len(history_df) >= 2:
@@ -368,9 +379,9 @@ def predict_trend():
         return jsonify({"predictions": preds, "model_type": predictor.model_source}), 200
     except Exception as e:
         logger.exception("Predictor failed, falling back to baseline: %s", e)
-        from datetime import timedelta, date
+        from datetime import timedelta, date as _date
         preds = []
-        today = date.today()
+        today = _date.today()
         if history_df is not None and not history_df.empty:
             history_df = history_df.sort_values("date")
             if len(history_df) >= 2:
@@ -406,13 +417,13 @@ def get_history():
             from_dt = datetime.fromisoformat(from_date).date()
             query = query.filter(EnergyUsage.date >= from_dt)
         except Exception:
-            return jsonify({"error": "invalid from date, expected YYYY-MM-DD"}), 400
+            return jsonify({"error": "invalid_from_date", "expected": "YYYY-MM-DD"}), 400
     if to_date:
         try:
             to_dt = datetime.fromisoformat(to_date).date()
             query = query.filter(EnergyUsage.date <= to_dt)
         except Exception:
-            return jsonify({"error": "invalid to date, expected YYYY-MM-DD"}), 400
+            return jsonify({"error": "invalid_to_date", "expected": "YYYY-MM-DD"}), 400
 
     rows = query.order_by(EnergyUsage.date.asc()).all()
     return jsonify([r.to_dict() for r in rows]), 200
@@ -440,10 +451,10 @@ def delete_energy_usage():
     data = request.get_json() or {}
     rec_id = data.get("id")
     if not rec_id:
-        return jsonify({"error":"id_required"}), 400
+        return jsonify({"error": "id_required"}), 400
     rec = EnergyUsage.query.filter_by(id=rec_id, user_id=g.current_user.id).first()
     if not rec:
-        return jsonify({"error":"not_found"}), 404
+        return jsonify({"error": "not_found"}), 404
     db.session.delete(rec)
     db.session.commit()
     return jsonify({"deleted": rec_id}), 200
@@ -454,10 +465,10 @@ def update_energy_usage():
     data = request.get_json() or {}
     rec_id = data.get("id")
     if not rec_id:
-        return jsonify({"error":"id_required"}), 400
+        return jsonify({"error": "id_required"}), 400
     rec = EnergyUsage.query.filter_by(id=rec_id, user_id=g.current_user.id).first()
     if not rec:
-        return jsonify({"error":"not_found"}), 404
+        return jsonify({"error": "not_found"}), 404
     # allow updating fields
     rec.company = data.get("company", rec.company)
     if "date" in data:
@@ -467,7 +478,6 @@ def update_energy_usage():
     rec.notes = data.get("notes", rec.notes)
     db.session.commit()
     return jsonify({"updated": rec.to_dict()}), 200
-
 
 @app.route("/auth/register", methods=["POST"])
 def register():
@@ -485,6 +495,7 @@ def register():
 
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "email_already_registered"}), 400
+
     user = User(email=email, name=name)
     user.set_password(password)
     db.session.add(user)
@@ -533,7 +544,7 @@ def init_db():
 # Run (dev)
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    # 1) Auto-train model if needed
+    # 1) Auto-train model if needed (local dev)
     auto_train_model()
 
     # 2) Start the server

@@ -25,7 +25,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(mes
 logger = logging.getLogger("ecotrack")
 
 app = Flask(__name__)
-CORS(app)  # dev only; tighten in production
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
+if ALLOWED_ORIGINS == "*":
+    CORS(app)
+else:
+    origins = [o.strip() for o in ALLOWED_ORIGINS.split(",")]
+    CORS(app, origins=origins, supports_credentials=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ecotrack-ai-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        value: https://your-frontend.vercel.app
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    disk:
+      name: ecotrack-data
+      mountPath: /opt/render/project/src/instance
+      sizeGB: 1

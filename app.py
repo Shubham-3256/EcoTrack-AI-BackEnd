@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify, g, make_response
 from flask_cors import CORS
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from openai import OpenAI
 from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 from utils.emission_calc import calculate_emission_from_kwh
@@ -569,72 +569,215 @@ def export_pdf():
 @app.route("/tips", methods=["GET"])
 @jwt_required
 def get_tips():
+
     import json
+
     user  = g.current_user
     today = date.today()
 
-    # Return cached tips if still fresh (same day)
-    if user.tips_cache and user.tips_cache_date == today:
+    # =========================
+    # CACHE
+    # =========================
+
+    if (
+        user.tips_cache and
+        user.tips_cache_date == today
+    ):
+
         try:
-            return jsonify({"tips": json.loads(user.tips_cache), "cached": True}), 200
+
+            return jsonify({
+                "tips": json.loads(user.tips_cache),
+                "cached": True
+            }), 200
+
         except Exception:
             pass
 
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not ANTHROPIC_API_KEY:
-        return jsonify({"error": "ANTHROPIC_API_KEY not configured"}), 503
+    # =========================
+    # OPENAI KEY
+    # =========================
 
-    # Build usage summary for last 30 days
+    OPENAI_API_KEY = os.environ.get(
+        "OPENAI_API_KEY",
+        ""
+    )
+
+    if not OPENAI_API_KEY:
+
+        return jsonify({
+            "error":
+            "OPENAI_API_KEY not configured"
+        }), 503
+
+    # =========================
+    # FETCH DATA
+    # =========================
+
     since = today - timedelta(days=30)
-    rows  = EnergyUsage.query.filter(
-        EnergyUsage.user_id == g.current_user.id,
+
+    rows = EnergyUsage.query.filter(
+        EnergyUsage.user_id == user.id,
         EnergyUsage.date >= since,
     ).all()
 
+    # =========================
+    # NO DATA
+    # =========================
+
     if not rows:
-        return jsonify({"tips": [
-            "Start logging your energy usage to get personalised tips.",
-            "Track at least a week of data to unlock AI insights.",
-            "Add multiple companies to compare your energy consumption.",
-        ], "cached": False}), 200
 
-    total_kwh     = sum(r.kwh for r in rows)
-    total_co2     = calculate_emission_from_kwh(total_kwh)
-    companies     = list({r.company for r in rows})
-    peak_day      = max(rows, key=lambda r: r.kwh)
-    avg_daily_kwh = total_kwh / max(len(set(r.date for r in rows)), 1)
+        return jsonify({
+            "tips": [
 
-    prompt = f"""You are an energy efficiency advisor. A user's last 30 days of electricity data:
-- Total: {total_kwh:.1f} kWh  ({total_co2:.1f} kg CO2)
-- Companies/sites tracked: {', '.join(companies)}
+                "Start logging your energy usage regularly to unlock personalized sustainability insights.",
+
+                "Track at least one week of energy usage data to improve AI recommendations.",
+
+                "Compare multiple companies or locations to identify efficiency gaps."
+            ],
+
+            "cached": False
+
+        }), 200
+
+    # =========================
+    # CALCULATIONS
+    # =========================
+
+    total_kwh = sum(r.kwh for r in rows)
+
+    total_co2 = calculate_emission_from_kwh(
+        total_kwh
+    )
+
+    companies = list({
+        r.company for r in rows
+    })
+
+    peak_day = max(
+        rows,
+        key=lambda r: r.kwh
+    )
+
+    avg_daily_kwh = (
+        total_kwh /
+        max(len(set(r.date for r in rows)), 1)
+    )
+
+    # =========================
+    # PROMPT
+    # =========================
+
+    prompt = f"""
+You are an expert sustainability and energy optimization advisor.
+
+User's last 30 days energy usage:
+
+- Total consumption: {total_kwh:.1f} kWh
+- Estimated emissions: {total_co2:.1f} kg CO2
+- Companies/sites: {', '.join(companies)}
 - Daily average: {avg_daily_kwh:.1f} kWh
-- Highest single day: {peak_day.date} at {peak_day.kwh:.1f} kWh ({peak_day.company})
+- Peak usage day: {peak_day.date} with {peak_day.kwh:.1f} kWh ({peak_day.company})
 
-Give exactly 3 specific, actionable, practical tips to reduce this user's carbon footprint.
-Respond ONLY with a JSON array of 3 strings. No preamble, no markdown, no extra keys.
-Example format: ["Tip one here.", "Tip two here.", "Tip three here."]"""
+Provide exactly 3 practical, specific, actionable recommendations to reduce energy consumption and carbon emissions.
+
+Return ONLY a valid JSON array of strings.
+
+Example:
+[
+  "Tip 1",
+  "Tip 2",
+  "Tip 3"
+]
+"""
 
     try:
-        import anthropic
-        client  = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model      = "claude-sonnet-4-20250514",
-            max_tokens = 400,
-            messages   = [{"role": "user", "content": prompt}],
-        )
-        raw  = message.content[0].text.strip()
-        tips = json.loads(raw)
-        if not isinstance(tips, list):
-            raise ValueError("Not a list")
-        # Cache in DB
-        user.tips_cache      = json.dumps(tips)
-        user.tips_cache_date = today
-        db.session.commit()
-        return jsonify({"tips": tips, "cached": False}), 200
-    except Exception as e:
-        logger.exception("AI tips generation failed: %s", e)
-        return jsonify({"error": "tips_generation_failed", "details": str(e)}), 500
 
+        client = OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+
+        response = client.chat.completions.create(
+
+            model="gpt-4o-mini",
+
+            messages=[
+
+                {
+                    "role": "system",
+
+                    "content":
+                    "You are a professional sustainability consultant."
+                },
+
+                {
+                    "role": "user",
+
+                    "content": prompt
+                }
+            ],
+
+            temperature=0.7,
+
+            max_tokens=300,
+        )
+
+        raw = (
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
+
+        tips = json.loads(raw)
+
+        if not isinstance(tips, list):
+
+            raise ValueError(
+                "Invalid AI response format"
+            )
+
+        # =========================
+        # CACHE
+        # =========================
+
+        user.tips_cache = json.dumps(tips)
+
+        user.tips_cache_date = today
+
+        db.session.commit()
+
+        return jsonify({
+            "tips": tips,
+            "cached": False
+        }), 200
+
+    except Exception as e:
+
+        logger.exception(
+            "AI tips generation failed: %s",
+            e
+        )
+
+        return jsonify({
+
+            "tips": [
+
+                "Reduce unnecessary lighting and equipment usage during non-operational hours.",
+
+                "Monitor peak energy consumption periods to identify optimization opportunities.",
+
+                "Replace inefficient appliances or systems with energy-efficient alternatives."
+            ],
+
+            "fallback": True,
+
+            "error":
+            str(e)
+
+        }), 200
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes — company benchmarking  (Step 9)
 # ─────────────────────────────────────────────────────────────────────────────

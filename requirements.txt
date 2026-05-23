@@ -34,3 +34,4 @@ python-dotenv==1.0.0
 
 # ── Production server ────────────────────────────────────────────────────────
 gunicorn==21.2.0
+openai

@@ -10,7 +10,8 @@ from flask_cors import CORS
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from database.db import db
+from flask_sqlalchemy import SQLAlchemy
+db = SQLAlchemy()
 from utils.emission_calc import calculate_emission_from_kwh
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
@@ -27,11 +28,10 @@ else:
 
 # ── Database ──────────────────────────────────────────────────────────────────
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
-INSTANCE_DIR  = os.path.join(BASE_DIR, "instance")
-os.makedirs(INSTANCE_DIR, exist_ok=True)
-
-DB_PATH = os.environ.get("DATABASE_URL") or f"sqlite:///{os.path.join(INSTANCE_DIR, 'ecotrack.db')}"
-# Fix Render's postgres:// prefix → postgresql://
+DB_PATH = os.environ.get("DATABASE_URL")
+if not DB_PATH:
+    raise RuntimeError("DATABASE_URL environment variable is not set")
+# Fix Render's legacy postgres:// prefix → postgresql://
 if DB_PATH.startswith("postgres://"):
     DB_PATH = "postgresql://" + DB_PATH[len("postgres://"):]
 
@@ -136,7 +136,6 @@ class EnergyUsage(db.Model):
     user       = db.relationship("User", backref=db.backref("energy_usage", lazy=True))
 
     def to_dict(self):
-        from utils.emission_calc import calculate_emission_from_kwh
         return {
             "id": self.id, "user_id": self.user_id, "company": self.company,
             "date": self.date.isoformat(), "kwh": self.kwh,
@@ -292,20 +291,6 @@ def login():
 @jwt_required
 def me():
     return jsonify({"user": g.current_user.to_public()}), 200
-
-@app.route("/auth/settings", methods=["PATCH"])
-@jwt_required
-def update_settings():
-    data = request.get_json() or {}
-    user = g.current_user
-    if "alert_threshold_kwh" in data:
-        user.alert_threshold_kwh = float(data["alert_threshold_kwh"]) if data["alert_threshold_kwh"] else None
-    if "alert_email_enabled" in data:
-        user.alert_email_enabled = bool(data["alert_email_enabled"])
-    if "name" in data:
-        user.name = data["name"]
-    db.session.commit()
-    return jsonify({"user": user.to_public()}), 200
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes — energy usage
@@ -738,4 +723,4 @@ def init_db():
 if __name__ == "__main__":
     auto_train_model()
     logger.info("Starting EcoTrack on 0.0.0.0:5000")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

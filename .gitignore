@@ -1,17 +1,21 @@
 # Python
-venv
+venv/
 .env
 .env.*
-__pycache__
+__pycache__/
 *.pyc
+*.pyo
 
 # Flask/SQLAlchemy
-instance
+instance/
 *.db
 
-# ML artifacts
+# ML artifacts — trained model files (large, regenerated on server)
 ML/model.pkl
+ML/prophet_model.pkl
+ML/xgb_residual.pkl
 
 # OS / editor
 .DS_Store
 Thumbs.db
+.vscode/

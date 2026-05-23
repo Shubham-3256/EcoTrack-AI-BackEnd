@@ -6,12 +6,12 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     envVars:
       - key: JWT_SECRET
-        generateValue: true
+        generateValue: true          # Render auto-generates a secure random value
       - key: ALLOWED_ORIGINS
-        value: https://your-frontend.vercel.app
+        value: https://your-frontend.vercel.app  # ← replace with your Vercel URL after deploy
       - key: PYTHON_VERSION
         value: 3.11.0
     disk:
       name: ecotrack-data
       mountPath: /opt/render/project/src/instance
-      sizeGB: 1
+      sizeGB: 1                      # persists SQLite DB across deploys

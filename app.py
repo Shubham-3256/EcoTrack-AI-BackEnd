@@ -1,4 +1,5 @@
 # backend/app.py
+import email
 import os, csv, io, logging, time, subprocess, sys
 from datetime import datetime, date, timedelta
 from functools import wraps
@@ -421,8 +422,6 @@ def send_reset_otp():
     
     try:
 
-        logger.info(f"OTP for {email}: {otp}")
-
         logger.info("OTP email sent successfully")
 
     except Exception as e:
@@ -465,6 +464,75 @@ def save_energy_usage():
     )
     db.session.add(record)
     db.session.commit()
+    
+    
+    try:
+
+        import smtplib
+
+        from email.mime.text import MIMEText
+
+        gmail = os.environ.get("MAIL_USERNAME")
+
+        app_password = os.environ.get("MAIL_PASSWORD")
+
+        msg = MIMEText(f"""
+            Your EcoTrack password reset OTP is:
+
+            {otp}
+
+            This OTP expires in 10 minutes.
+            """)
+
+        msg["Subject"] = "EcoTrack Password Reset OTP"
+
+        msg["From"] = gmail
+
+        msg["To"] = email
+
+        # IMPORTANT: timeout added
+        server = smtplib.SMTP(
+            "smtp.gmail.com",
+            587,
+            timeout=10
+        )
+
+        server.ehlo()
+
+        server.starttls()
+
+        server.ehlo()
+
+        server.login(
+            gmail,
+            app_password
+        )
+
+        server.sendmail(
+            gmail,
+            [email],
+            msg.as_string()
+        )
+
+        server.quit()
+
+        logger.info(
+            "OTP email sent successfully"
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            "OTP send failed: %s",
+            e
+        )
+
+        # fallback to logs
+        logger.info(
+            f"OTP fallback for {email}: {otp}"
+        )
+
+    
     _maybe_send_alert(g.current_user)
     return jsonify({"record": record.to_dict()}), 201
 

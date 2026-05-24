@@ -7,6 +7,10 @@ import bcrypt as _bcrypt_lib
 import pandas as pd
 from flask import Flask, request, jsonify, g, make_response
 from flask_cors import CORS
+from flask_mail import Mail, Message
+import random
+
+mail = Mail(app)
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 from openai import OpenAI
@@ -19,6 +23,16 @@ logger = logging.getLogger("ecotrack")
 
 app = Flask(__name__)
 
+
+# ── Flask Mail ─────────────────────────────
+
+app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER")
+app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", 587))
+app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "True") == "True"
+app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME")
+app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
+
+mail = Mail(app)
 # ── CORS ─────────────────────────────────────────────────────────────────────
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 if ALLOWED_ORIGINS == "*":
@@ -122,7 +136,53 @@ class User(db.Model):
             "alert_email_enabled": self.alert_email_enabled,
             "created_at": self.created_at.isoformat(),
         }
+@app.route("/auth/verify-reset-otp", methods=["POST"])
+def verify_reset_otp():
+    data = request.get_json() or {}
 
+    email = (data.get("email") or "").strip().lower()
+    otp = data.get("otp")
+    new_password = data.get("password")
+
+    if not email or not otp or not new_password:
+        return jsonify({
+            "error": "missing_fields"
+        }), 400
+
+    row = PasswordResetOTP.query.filter_by(
+        email=email,
+        otp=otp
+    ).first()
+
+    if not row:
+        return jsonify({
+            "error": "invalid_otp"
+        }), 400
+
+    if row.expires_at < datetime.utcnow():
+        db.session.delete(row)
+        db.session.commit()
+
+        return jsonify({
+            "error": "otp_expired"
+        }), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({
+            "error": "user_not_found"
+        }), 404
+
+    user.set_password(new_password)
+
+    db.session.delete(row)
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Password reset successful"
+    }), 200
 class PasswordResetOTP(db.Model):
     __tablename__ = "password_reset_otp"
 
@@ -315,6 +375,65 @@ def login():
 @jwt_required
 def me():
     return jsonify({"user": g.current_user.to_public()}), 200
+
+@app.route("/auth/send-reset-otp", methods=["POST"])
+def send_reset_otp():
+    data = request.get_json() or {}
+
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({
+            "error": "email_required"
+        }), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({
+            "error": "user_not_found"
+        }), 404
+
+    otp = str(random.randint(100000, 999999))
+
+    PasswordResetOTP.query.filter_by(email=email).delete()
+
+    reset = PasswordResetOTP(
+        email=email,
+        otp=otp,
+        expires_at=datetime.utcnow() + timedelta(minutes=10)
+    )
+
+    db.session.add(reset)
+    db.session.commit()
+
+    try:
+        msg = Message(
+            "EcoTrack Password Reset OTP",
+            sender=app.config["MAIL_USERNAME"],
+            recipients=[email]
+        )
+
+        msg.body = f"""
+Your EcoTrack OTP is:
+
+{otp}
+
+This OTP expires in 10 minutes.
+"""
+
+        mail.send(msg)
+
+    except Exception as e:
+        logger.exception("OTP send failed: %s", e)
+
+        return jsonify({
+            "error": "email_send_failed"
+        }), 500
+
+    return jsonify({
+        "message": "OTP sent"
+    }), 200
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes — energy usage

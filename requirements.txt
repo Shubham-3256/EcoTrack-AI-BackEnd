@@ -39,3 +39,7 @@ openai>=1.30.0
 flask-mail
 
 resend
+
+firebase
+
+firebase-admin

@@ -49,6 +49,10 @@ if DB_PATH.startswith("postgres://"):
     DB_PATH = "postgresql://" + DB_PATH[len("postgres://"):]
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DB_PATH
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+}
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 

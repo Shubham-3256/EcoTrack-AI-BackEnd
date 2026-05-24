@@ -417,55 +417,6 @@ def send_reset_otp():
 
     db.session.add(reset)
     db.session.commit()
-
-
-    
-    try:
-
-        logger.info("OTP email sent successfully")
-
-    except Exception as e:
-
-        logger.exception("OTP send failed: %s", e)
-
-        return jsonify({
-            "error": "email_send_failed"
-        }), 500
-
-    return jsonify({
-        "message": "OTP sent"
-    }), 200
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Routes — energy usage
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.route("/save-energy-usage", methods=["POST"])
-@jwt_required
-def save_energy_usage():
-    data    = request.get_json() or {}
-    company = (data.get("company") or "").strip()
-    kwh     = data.get("kwh")
-    date_str= data.get("date")
-    if not company or kwh is None or not date_str:
-        return jsonify({"error": "company, kwh, and date are required"}), 400
-    try:
-        kwh = float(kwh)
-    except ValueError:
-        return jsonify({"error": "kwh must be a number"}), 400
-    try:
-        record_date = datetime.fromisoformat(date_str).date()
-    except ValueError:
-        return jsonify({"error": "date must be YYYY-MM-DD"}), 400
-
-    record = EnergyUsage(
-        user_id=g.current_user.id, company=company,
-        date=record_date, kwh=kwh, notes=data.get("notes"),
-    )
-    db.session.add(record)
-    db.session.commit()
-    
-    
     try:
 
         import smtplib
@@ -531,8 +482,39 @@ def save_energy_usage():
         logger.info(
             f"OTP fallback for {email}: {otp}"
         )
+    return jsonify({
+        "message": "OTP sent"
+    }), 200
 
-    
+# ─────────────────────────────────────────────────────────────────────────────
+# Routes — energy usage
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/save-energy-usage", methods=["POST"])
+@jwt_required
+def save_energy_usage():
+    data    = request.get_json() or {}
+    company = (data.get("company") or "").strip()
+    kwh     = data.get("kwh")
+    date_str= data.get("date")
+    if not company or kwh is None or not date_str:
+        return jsonify({"error": "company, kwh, and date are required"}), 400
+    try:
+        kwh = float(kwh)
+    except ValueError:
+        return jsonify({"error": "kwh must be a number"}), 400
+    try:
+        record_date = datetime.fromisoformat(date_str).date()
+    except ValueError:
+        return jsonify({"error": "date must be YYYY-MM-DD"}), 400
+
+    record = EnergyUsage(
+        user_id=g.current_user.id, company=company,
+        date=record_date, kwh=kwh, notes=data.get("notes"),
+    )
+    db.session.add(record)
+    db.session.commit()
+
     _maybe_send_alert(g.current_user)
     return jsonify({"record": record.to_dict()}), 201
 

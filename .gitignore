@@ -5,7 +5,9 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
-
+serviceAccountKey.json
+.env
+.env.local
 # Flask/SQLAlchemy
 instance/
 *.db

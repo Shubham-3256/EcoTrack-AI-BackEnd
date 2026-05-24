@@ -7,7 +7,6 @@ import bcrypt as _bcrypt_lib
 import pandas as pd
 from flask import Flask, request, jsonify, g, make_response
 from flask_cors import CORS
-from flask_mail import Mail, Message
 import random
 
 import jwt
@@ -25,13 +24,12 @@ app = Flask(__name__)
 
 # ── Flask Mail ─────────────────────────────
 
-app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER")
-app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", 587))
-app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "True") == "True"
-app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME")
-app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
+# app.config["MAIL_SERVER"] = os.environ.get("MAIL_SERVER")
+# app.config["MAIL_PORT"] = int(os.environ.get("MAIL_PORT", 587))
+# app.config["MAIL_USE_TLS"] = os.environ.get("MAIL_USE_TLS", "True") == "True"
+# app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME")
+# app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
 
-mail = Mail(app)
 # ── CORS ─────────────────────────────────────────────────────────────────────
 
 ALLOWED_ORIGINS = [
@@ -419,22 +417,26 @@ def send_reset_otp():
     db.session.add(reset)
     db.session.commit()
 
+
     try:
-        msg = Message(
-            "EcoTrack Password Reset OTP",
-            sender=app.config["MAIL_USERNAME"],
-            recipients=[email]
-        )
+        import resend
 
-        msg.body = f"""
-Your EcoTrack OTP is:
+        resend.api_key = os.environ.get("RESEND_API_KEY")
 
-{otp}
+        resend.Emails.send({
+            "from": "EcoTrack <onboarding@resend.dev>",
+            "to": [email],
+            "subject": "EcoTrack Password Reset OTP",
+            "html": f"""
+                <h2>Password Reset OTP</h2>
 
-This OTP expires in 10 minutes.
-"""
+                <p>Your OTP is:</p>
 
-        mail.send(msg)
+                <h1>{otp}</h1>
+
+                <p>This OTP expires in 10 minutes.</p>
+            """
+        })
 
     except Exception as e:
         logger.exception("OTP send failed: %s", e)

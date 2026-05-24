@@ -31,9 +31,14 @@ app = Flask(__name__)
 
 _firebase_initialized = False
 try:
-    _cred = credentials.Certificate(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "serviceAccountKey.json")
-    )
+    _sa_env = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+    if _sa_env:
+        # Production: loaded from environment variable (Render / any cloud host)
+        _cred = credentials.Certificate(json.loads(_sa_env))
+    else:
+        # Local development: fall back to the JSON file
+        _key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "serviceAccountKey.json")
+        _cred = credentials.Certificate(_key_path)
     firebase_admin.initialize_app(_cred)
     _firebase_initialized = True
     logger.info("Firebase Admin SDK initialised successfully.")

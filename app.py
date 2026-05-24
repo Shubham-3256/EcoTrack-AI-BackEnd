@@ -10,7 +10,6 @@ from flask_cors import CORS
 from flask_mail import Mail, Message
 import random
 
-mail = Mail(app)
 import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 from openai import OpenAI

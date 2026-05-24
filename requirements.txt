@@ -35,3 +35,5 @@ python-dotenv==1.0.0
 # ── Production server ────────────────────────────────────────────────────────
 gunicorn==21.2.0
 openai>=1.30.0
+
+flask-mail

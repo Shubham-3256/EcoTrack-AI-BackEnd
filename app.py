@@ -33,11 +33,20 @@ app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD")
 
 mail = Mail(app)
 # ── CORS ─────────────────────────────────────────────────────────────────────
-ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
-if ALLOWED_ORIGINS == "*":
-    CORS(app)
-else:
-    CORS(app, origins=[o.strip() for o in ALLOWED_ORIGINS.split(",")], supports_credentials=True)
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000"
+    ).split(",")
+]
+
+CORS(
+    app,
+    origins=ALLOWED_ORIGINS,
+    supports_credentials=True,
+)
 
 # ── Database ──────────────────────────────────────────────────────────────────
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))

@@ -418,27 +418,44 @@ def send_reset_otp():
     db.session.commit()
 
 
+    
     try:
-        import resend
+        import smtplib
+        from email.mime.text import MIMEText
 
-        resend.api_key = os.environ.get("RESEND_API_KEY")
+        gmail = os.environ.get("MAIL_USERNAME")
+        app_password = os.environ.get("MAIL_PASSWORD")
 
-        resend.Emails.send({
-            "from": "EcoTrack <onboarding@resend.dev>",
-            "to": [email],
-            "subject": "EcoTrack Password Reset OTP",
-            "html": f"""
-                <h2>Password Reset OTP</h2>
+        msg = MIMEText(f"""
+        Your EcoTrack password reset OTP is:
 
-                <p>Your OTP is:</p>
+        {otp}
 
-                <h1>{otp}</h1>
+        This OTP expires in 10 minutes.
+        """)
 
-                <p>This OTP expires in 10 minutes.</p>
-            """
-        })
+        msg["Subject"] = "EcoTrack Password Reset OTP"
+        msg["From"] = gmail
+        msg["To"] = email
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+
+        server.starttls()
+
+        server.login(gmail, app_password)
+
+        server.sendmail(
+            gmail,
+            email,
+            msg.as_string()
+        )
+
+        server.quit()
+
+        logger.info("OTP email sent successfully")
 
     except Exception as e:
+
         logger.exception("OTP send failed: %s", e)
 
         return jsonify({

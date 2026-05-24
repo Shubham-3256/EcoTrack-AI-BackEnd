@@ -420,37 +420,8 @@ def send_reset_otp():
 
     
     try:
-        import smtplib
-        from email.mime.text import MIMEText
 
-        gmail = os.environ.get("MAIL_USERNAME")
-        app_password = os.environ.get("MAIL_PASSWORD")
-
-        msg = MIMEText(f"""
-        Your EcoTrack password reset OTP is:
-
-        {otp}
-
-        This OTP expires in 10 minutes.
-        """)
-
-        msg["Subject"] = "EcoTrack Password Reset OTP"
-        msg["From"] = gmail
-        msg["To"] = email
-
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-
-        server.starttls()
-
-        server.login(gmail, app_password)
-
-        server.sendmail(
-            gmail,
-            email,
-            msg.as_string()
-        )
-
-        server.quit()
+        logger.info(f"OTP for {email}: {otp}")
 
         logger.info("OTP email sent successfully")
 

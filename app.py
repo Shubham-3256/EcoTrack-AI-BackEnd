@@ -314,6 +314,75 @@ def me():
     """Return the current authenticated user's public profile."""
     return jsonify({"user": g.current_user.to_public()}), 200
 
+@app.route("/auth/send-reset-email", methods=["POST"])
+def send_reset_email():
+    """Generate a Firebase password-reset link via Admin SDK, then deliver it
+    through Resend so the email comes from a trusted domain and actually lands
+    in the inbox.
+    """
+    data  = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "email_required"}), 400
+
+    # Generate the reset link — Firebase Admin handles token creation
+    try:
+        action_code_settings = firebase_auth.ActionCodeSettings(
+            url=os.environ.get("FRONTEND_URL", "http://localhost:3000") + "/auth/login",
+            handle_code_in_app=False,
+        )
+        reset_link = firebase_auth.generate_password_reset_link(
+            email,
+            action_code_settings=action_code_settings,
+        )
+    except firebase_auth.UserNotFoundError:
+        # Don't reveal whether the email is registered
+        return jsonify({"message": "If that email is registered, a reset link has been sent."}), 200
+    except Exception as exc:
+        logger.exception("Failed to generate Firebase reset link: %s", exc)
+        return jsonify({"error": "failed_to_generate_link"}), 500
+
+    # Send via Resend for reliable delivery
+    resend_key = os.environ.get("RESEND_API_KEY", "")
+    if not resend_key:
+        logger.error("RESEND_API_KEY not configured — cannot send reset email")
+        return jsonify({"error": "email_service_not_configured"}), 503
+
+    try:
+        import resend as resend_lib
+        resend_lib.api_key = resend_key
+        resend_lib.Emails.send({
+            "from":    "EcoTrack <noreply@ecotrack.app>",
+            "to":      [email],
+            "subject": "Reset your EcoTrack password",
+            "html":    f"""
+                <div style="font-family:sans-serif;max-width:480px;margin:auto">
+                  <h2 style="color:#1D9E75">EcoTrack Password Reset</h2>
+                  <p>We received a request to reset the password for your account.</p>
+                  <p>Click the button below to choose a new password. This link
+                  expires in <strong>1 hour</strong>.</p>
+                  <a href="{reset_link}"
+                     style="display:inline-block;margin:16px 0;padding:12px 24px;
+                            background:#1D9E75;color:#fff;border-radius:6px;
+                            text-decoration:none;font-weight:600">
+                    Reset Password
+                  </a>
+                  <p style="font-size:12px;color:#888">
+                    If you didn't request this, you can safely ignore this email.<br>
+                    Or paste this link in your browser:<br>
+                    <a href="{reset_link}" style="color:#1D9E75">{reset_link}</a>
+                  </p>
+                </div>
+            """,
+        })
+        logger.info("Password reset email sent to %s", email)
+    except Exception as exc:
+        logger.exception("Resend delivery failed: %s", exc)
+        return jsonify({"error": "email_send_failed"}), 500
+
+    return jsonify({"message": "If that email is registered, a reset link has been sent."}), 200
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes — energy usage
 # ─────────────────────────────────────────────────────────────────────────────

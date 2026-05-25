@@ -18,16 +18,17 @@ services:
         generateValue: true
 
       - key: ALLOWED_ORIGINS
-        value: eco-track-ai-front-end.vercel.app   # ← replace after Vercel deploy
+        value: https://eco-track-ai-front-end.vercel.app
 
       - key: DATABASE_URL
         fromDatabase:
-          name: ecotrack-db          # auto-injected — no copy-paste needed
+          name: ecotrack-db
           property: connectionString
 
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11.9
 
-      # Add these manually in Render dashboard (keep secrets out of git):
-      # ANTHROPIC_API_KEY = sk-ant-...
-      # RESEND_API_KEY    = re_...
+      # Add these manually in Render dashboard. Keep secrets out of git.
+      # FIREBASE_SERVICE_ACCOUNT
+      # OPENAI_API_KEY
+      # RESEND_API_KEY

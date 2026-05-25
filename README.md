@@ -67,9 +67,10 @@ Deployment	Render
 
 Create a .env file in backend root:
 
-```SECRET_KEY=your-secret-key
+```
+SECRET_KEY=your-secret-key
 JWT_SECRET=your-jwt-secret
-DATABASE_URL=sqlite:///energy.db
+DATABASE_URL=sqlite:///ecotrack.db
 ```
 
 When deploying on Render:

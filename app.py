@@ -12,7 +12,9 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 
 from openai import OpenAI
-from werkzeug.security import generate_password_hash
+from dotenv import load_dotenv
+
+load_dotenv()
 
 db = SQLAlchemy()
 
@@ -226,7 +228,7 @@ with app.app_context():
             logger.info("DB initialised: %s", sa_inspect(db.engine).get_table_names())
         else:
             db.create_all()
-            logger.info("DB tables: %s", tables)
+            logger.info("DB tables: %s", sa_inspect(db.engine).get_table_names())
     except Exception as e:
         logger.exception("DB init error: %s", e)
 
@@ -445,9 +447,15 @@ def update_energy_usage():
 
     rec.company = data.get("company", rec.company)
     if "date" in data:
-        rec.date = datetime.fromisoformat(data["date"]).date()
+        try:
+            rec.date = datetime.fromisoformat(data["date"]).date()
+        except (TypeError, ValueError):
+            return jsonify({"error": "date must be YYYY-MM-DD"}), 400
     if "kwh" in data:
-        rec.kwh = float(data["kwh"])
+        try:
+            rec.kwh = float(data["kwh"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "kwh must be a number"}), 400
     rec.notes = data.get("notes", rec.notes)
     db.session.commit()
     return jsonify({"updated": rec.to_dict()}), 200
@@ -460,7 +468,10 @@ def update_energy_usage():
 @firebase_required
 def predict_trend():
     data    = request.get_json() or {}
-    days    = int(data.get("days", 7))
+    try:
+        days = int(data.get("days", 7))
+    except (TypeError, ValueError):
+        return jsonify({"error": "days must be an integer"}), 400
     company = data.get("company")
     days    = max(1, min(days, 90))
 
@@ -496,11 +507,15 @@ def predict_trend():
 @firebase_required
 def get_goals():
     month = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        month_start = datetime.strptime(month, "%Y-%m").date()
+    except (TypeError, ValueError):
+        return jsonify({"error": "month must be YYYY-MM"}), 400
+
     goal  = Goal.query.filter_by(user_id=g.current_user.id, month=month).first()
     if not goal:
         return jsonify({"goal": None}), 200
 
-    month_start = datetime.strptime(month, "%Y-%m").date()
     month_end   = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
     rows = EnergyUsage.query.filter(
         EnergyUsage.user_id == g.current_user.id,
@@ -523,14 +538,32 @@ def get_goals():
 def set_goal():
     data  = request.get_json() or {}
     month = data.get("month", date.today().strftime("%Y-%m"))
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except (TypeError, ValueError):
+        return jsonify({"error": "month must be YYYY-MM"}), 400
+
+    kwh_target = None
+    co2_target_kg = None
+    if "kwh_target" in data:
+        try:
+            kwh_target = float(data["kwh_target"]) if data["kwh_target"] else None
+        except (TypeError, ValueError):
+            return jsonify({"error": "kwh_target must be a number"}), 400
+    if "co2_target_kg" in data:
+        try:
+            co2_target_kg = float(data["co2_target_kg"]) if data["co2_target_kg"] else None
+        except (TypeError, ValueError):
+            return jsonify({"error": "co2_target_kg must be a number"}), 400
+
     goal  = Goal.query.filter_by(user_id=g.current_user.id, month=month).first()
     if not goal:
         goal = Goal(user_id=g.current_user.id, month=month)
         db.session.add(goal)
     if "kwh_target" in data:
-        goal.kwh_target = float(data["kwh_target"]) if data["kwh_target"] else None
+        goal.kwh_target = kwh_target
     if "co2_target_kg" in data:
-        goal.co2_target_kg = float(data["co2_target_kg"]) if data["co2_target_kg"] else None
+        goal.co2_target_kg = co2_target_kg
     db.session.commit()
     return jsonify({"goal": goal.to_dict()}), 200
 
@@ -780,7 +813,10 @@ def patch_user_settings():
         user.alert_email_enabled = bool(data["alert_email_enabled"])
     if "alert_threshold_kwh" in data:
         val = data["alert_threshold_kwh"]
-        user.alert_threshold_kwh = float(val) if val is not None else None
+        try:
+            user.alert_threshold_kwh = float(val) if val is not None else None
+        except (TypeError, ValueError):
+            return jsonify({"error": "alert_threshold_kwh must be a number"}), 400
     if "name" in data:
         user.name = str(data["name"])[:200]
     db.session.commit()
